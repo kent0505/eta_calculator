@@ -4,6 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="./icon.png">
   <title>ETA Calculator</title>
 
   <style>
@@ -109,14 +110,6 @@
       background: #047857;
     }
 
-    #copyMilesBtn {
-      background: #2563eb;
-    }
-
-    #copyMilesBtn:hover:not(:disabled) {
-      background: #1d4ed8;
-    }
-
     button:disabled {
       opacity: 0.45;
       cursor: not-allowed;
@@ -151,10 +144,6 @@
         Copy ETA
       </button>
 
-      <button id="copyMilesBtn" type="button" disabled>
-        Copy Miles
-      </button>
-
       <div id="message"></div>
     </section>
   </main>
@@ -163,7 +152,6 @@
     const milesInput = document.getElementById("miles");
     const etaDisplay = document.getElementById("eta");
     const copyBtn = document.getElementById("copyBtn");
-    const copyMilesBtn = document.getElementById("copyMilesBtn");
     const message = document.getElementById("message");
 
     let etaText = "";
