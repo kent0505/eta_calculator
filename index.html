@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ETA Calculator</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: #111827;
+      color: #f9fafb;
+      font-family: Arial, sans-serif;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 380px;
+      padding: 28px;
+      background: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 16px;
+      box-shadow: 0 15px 40px #0003;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 26px;
+    }
+
+    .subtitle {
+      margin: 0 0 24px;
+      color: #9ca3af;
+      font-size: 14px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    input {
+      width: 100%;
+      padding: 14px;
+      border: 1px solid #4b5563;
+      border-radius: 9px;
+      background: #111827;
+      color: white;
+      font-size: 18px;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: #60a5fa;
+    }
+
+    .speed {
+      margin-top: 12px;
+      color: #9ca3af;
+      font-size: 13px;
+    }
+
+    .result {
+      margin-top: 22px;
+      padding: 18px;
+      border-radius: 10px;
+      background: #111827;
+      text-align: center;
+    }
+
+    .result-label {
+      margin-bottom: 8px;
+      color: #9ca3af;
+      font-size: 13px;
+    }
+
+    #eta {
+      font-size: 28px;
+      font-weight: bold;
+      letter-spacing: 1px;
+    }
+
+    button {
+      width: 100%;
+      margin-top: 14px;
+      padding: 14px;
+      border: none;
+      border-radius: 9px;
+      background: #059669;
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:hover:not(:disabled) {
+      background: #047857;
+    }
+
+    #copyMilesBtn {
+      background: #2563eb;
+    }
+
+    #copyMilesBtn:hover:not(:disabled) {
+      background: #1d4ed8;
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    #message {
+      min-height: 18px;
+      margin-top: 12px;
+      color: #34d399;
+      font-size: 13px;
+    }
+  </style>
+</head>
+
+<body>
+  <main class="app">
+    <h1>ETA Calculator</h1>
+    <p class="subtitle">
+      Arrival time calculated automatically at 57 mph.
+    </p>
+
+    <label for="miles">Distance (miles)</label>
+    <input id="miles" type="number" min="0" step="any" placeholder="Enter miles" autofocus>
+
+    <div class="speed">Fixed speed: 57 mph</div>
+
+    <section class="result" aria-live="polite">
+      <div class="result-label">Estimated arrival</div>
+      <div id="eta">--/-- --:--</div>
+
+      <button id="copyBtn" type="button" disabled>
+        Copy ETA
+      </button>
+
+      <button id="copyMilesBtn" type="button" disabled>
+        Copy Miles
+      </button>
+
+      <div id="message"></div>
+    </section>
+  </main>
+
+  <script>
+    const milesInput = document.getElementById("miles");
+    const etaDisplay = document.getElementById("eta");
+    const copyBtn = document.getElementById("copyBtn");
+    const copyMilesBtn = document.getElementById("copyMilesBtn");
+    const message = document.getElementById("message");
+
+    let etaText = "";
+
+    function formatETA(date) {
+      const pad = n => String(n).padStart(2, "0");
+
+      return (
+        pad(date.getMonth() + 1) + "/" +
+        pad(date.getDate()) + " " +
+        pad(date.getHours()) + ":" +
+        pad(date.getMinutes())
+      );
+    }
+
+    function calculateETA() {
+      const value = milesInput.value.trim();
+
+      message.textContent = "";
+
+      if (value === "") {
+        etaText = "";
+        etaDisplay.textContent = "--/-- --:--";
+        copyBtn.disabled = true;
+        copyMilesBtn.disabled = true;
+        return;
+      }
+
+      const miles = Number(value);
+
+      if (!Number.isFinite(miles) || miles < 0) {
+        etaText = "";
+        etaDisplay.textContent = "--/-- --:--";
+        copyBtn.disabled = true;
+        copyMilesBtn.disabled = true;
+        message.textContent = "Enter a valid distance.";
+        return;
+      }
+
+      const travelTimeMs = (miles / 57) * 60 * 60 * 1000;
+      const arrival = new Date(Date.now() + travelTimeMs);
+
+      etaText = formatETA(arrival);
+      etaDisplay.textContent = etaText;
+
+      copyBtn.disabled = false;
+      copyMilesBtn.disabled = false;
+    }
+
+    milesInput.addEventListener("input", calculateETA);
+
+    // Copy ETA and clear the distance field
+    copyBtn.addEventListener("click", async function () {
+      if (!etaText) return;
+
+      try {
+        await navigator.clipboard.writeText(etaText);
+
+        milesInput.value = "";
+        calculateETA();
+        milesInput.focus();
+
+        message.textContent = "ETA copied!";
+      } catch (error) {
+        message.textContent =
+          "Copy failed. Try using HTTPS or localhost.";
+      }
+    });
+
+    // Copy miles without clearing the distance field
+    copyMilesBtn.addEventListener("click", async function () {
+      const value = milesInput.value.trim();
+      const miles = Number(value);
+
+      if (
+        value === "" ||
+        !Number.isFinite(miles) ||
+        miles < 0
+      ) {
+        return;
+      }
+
+      const milesText = `Rolling ${miles} mi`;
+
+      try {
+        await navigator.clipboard.writeText(milesText);
+        message.textContent = "Miles copied!";
+      } catch (error) {
+        message.textContent =
+          "Copy failed. Try using HTTPS or localhost.";
+      }
+    });
+  </script>
+</body>
+
+</html>
