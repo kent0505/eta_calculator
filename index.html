@@ -24,11 +24,22 @@
       font-family: Arial, sans-serif;
     }
 
+    #fx {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+    }
+
     .app {
+      position: relative;
+      z-index: 1;
       width: 100%;
       max-width: 380px;
       padding: 28px;
-      background: #1f2937;
+      background: #1f2937ee;
       border: 1px solid #374151;
       border-radius: 16px;
       box-shadow: 0 15px 40px #0003;
@@ -52,9 +63,13 @@
       font-weight: bold;
     }
 
+    .field {
+      position: relative;
+    }
+
     input {
       width: 100%;
-      padding: 14px;
+      padding: 14px 46px 14px 14px;
       border: 1px solid #4b5563;
       border-radius: 9px;
       background: #111827;
@@ -65,6 +80,31 @@
 
     input:focus {
       border-color: #60a5fa;
+    }
+
+    #clearBtn {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 30px;
+      height: 30px;
+      margin: 0;
+      padding: 0;
+      border-radius: 50%;
+      background: #374151;
+      color: #d1d5db;
+      font-size: 16px;
+      line-height: 1;
+      display: none;
+    }
+
+    #clearBtn.show {
+      display: block;
+    }
+
+    #clearBtn:hover {
+      background: #4b5563;
     }
 
     .speed {
@@ -125,14 +165,17 @@
 </head>
 
 <body>
+  <canvas id="fx"></canvas>
+
   <main class="app">
     <h1>ETA Calculator</h1>
-    <p class="subtitle">
-      Arrival time calculated automatically at 57 mph.
-    </p>
+    <p class="subtitle">Arrival time calculated automatically at 57 mph.</p>
 
     <label for="miles">Distance (miles)</label>
-    <input id="miles" type="number" min="0" step="any" placeholder="Enter miles" autofocus>
+    <div class="field">
+      <input id="miles" type="number" min="0" step="any" placeholder="Enter miles" autofocus>
+      <button id="clearBtn" type="button" aria-label="Clear miles">✕</button>
+    </div>
 
     <div class="speed">Fixed speed: 57 mph</div>
 
@@ -140,9 +183,7 @@
       <div class="result-label">Estimated arrival</div>
       <div id="eta">--/-- --:--</div>
 
-      <button id="copyBtn" type="button" disabled>
-        Copy ETA
-      </button>
+      <button id="copyBtn" type="button" disabled>Copy ETA</button>
 
       <div id="message"></div>
     </section>
@@ -152,98 +193,132 @@
     const milesInput = document.getElementById("miles");
     const etaDisplay = document.getElementById("eta");
     const copyBtn = document.getElementById("copyBtn");
+    const clearBtn = document.getElementById("clearBtn");
     const message = document.getElementById("message");
 
     let etaText = "";
 
     function formatETA(date) {
       const pad = n => String(n).padStart(2, "0");
+      return pad(date.getMonth() + 1) + "/" + pad(date.getDate()) + " " +
+        pad(date.getHours()) + ":" + pad(date.getMinutes());
+    }
 
-      return (
-        pad(date.getMonth() + 1) + "/" +
-        pad(date.getDate()) + " " +
-        pad(date.getHours()) + ":" +
-        pad(date.getMinutes())
-      );
+    function reset(msg) {
+      etaText = "";
+      etaDisplay.textContent = "--/-- --:--";
+      copyBtn.disabled = true;
+      message.textContent = msg || "";
     }
 
     function calculateETA() {
       const value = milesInput.value.trim();
-
       message.textContent = "";
+      clearBtn.classList.toggle("show", value !== "");
 
-      if (value === "") {
-        etaText = "";
-        etaDisplay.textContent = "--/-- --:--";
-        copyBtn.disabled = true;
-        copyMilesBtn.disabled = true;
-        return;
-      }
+      if (value === "") return reset();
 
       const miles = Number(value);
+      if (!Number.isFinite(miles) || miles < 0) return reset("Enter a valid distance.");
 
-      if (!Number.isFinite(miles) || miles < 0) {
-        etaText = "";
-        etaDisplay.textContent = "--/-- --:--";
-        copyBtn.disabled = true;
-        copyMilesBtn.disabled = true;
-        message.textContent = "Enter a valid distance.";
-        return;
-      }
-
-      const travelTimeMs = (miles / 57) * 60 * 60 * 1000;
-      const arrival = new Date(Date.now() + travelTimeMs);
-
+      const arrival = new Date(Date.now() + (miles / 57) * 3600 * 1000);
       etaText = formatETA(arrival);
       etaDisplay.textContent = etaText;
-
       copyBtn.disabled = false;
-      copyMilesBtn.disabled = false;
     }
 
     milesInput.addEventListener("input", calculateETA);
 
-    // Copy ETA and clear the distance field
+    // Clear the miles field
+    clearBtn.addEventListener("click", function () {
+      milesInput.value = "";
+      calculateETA();
+      milesInput.focus();
+    });
+
+    // Copy ETA (field is kept)
     copyBtn.addEventListener("click", async function () {
       if (!etaText) return;
-
       try {
         await navigator.clipboard.writeText(etaText);
-
-        milesInput.value = "";
-        calculateETA();
-        milesInput.focus();
-
         message.textContent = "ETA copied!";
       } catch (error) {
-        message.textContent =
-          "Copy failed. Try using HTTPS or localhost.";
+        message.textContent = "Copy failed. Try using HTTPS or localhost.";
       }
     });
 
-    // Copy miles without clearing the distance field
-    copyMilesBtn.addEventListener("click", async function () {
-      const value = milesInput.value.trim();
-      const miles = Number(value);
+    /* ---------- Floating names (always on) ---------- */
+    const NAMES = ["Connor", "Alex", "Ellis", "Zack", "Leo", "Alice", "Rob", "Michael", "Sam",
+      "Lia", "Oliver", "Kevin", "Nicholas", "Simon", "Sophia", "Ashley"];
+    const canvas = document.getElementById("fx");
+    const ctx = canvas.getContext("2d");
+    let W = 0, H = 0, floaters = [];
 
-      if (
-        value === "" ||
-        !Number.isFinite(miles) ||
-        miles < 0
-      ) {
-        return;
+    function resize() {
+      const dpr = window.devicePixelRatio || 1;
+      W = window.innerWidth;
+      H = window.innerHeight;
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function initNames() {
+      floaters = [];
+      for (let copy = 0; copy < 2; copy++) {
+        for (const name of NAMES) {
+          const speed = 0.25 + Math.random() * 0.7;
+          const angle = Math.random() * Math.PI * 2;
+          floaters.push({
+            name,
+            x: Math.random() * W,
+            y: Math.random() * H,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            size: 14 + Math.random() * 18,
+            alpha: 0.18 + Math.random() * 0.25,
+            hue: Math.floor(Math.random() * 360),
+            rot: (Math.random() - 0.5) * 0.5,
+            rotV: (Math.random() - 0.5) * 0.002,
+            phase: Math.random() * Math.PI * 2
+          });
+        }
       }
+    }
 
-      const milesText = `Rolling ${miles} mi`;
+    function frame() {
+      ctx.clearRect(0, 0, W, H);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
 
-      try {
-        await navigator.clipboard.writeText(milesText);
-        message.textContent = "Miles copied!";
-      } catch (error) {
-        message.textContent =
-          "Copy failed. Try using HTTPS or localhost.";
+      for (const f of floaters) {
+        f.phase += 0.02;
+        f.x += f.vx;
+        f.y += f.vy + Math.sin(f.phase) * 0.3;
+        f.rot += f.rotV;
+
+        const m = 80;
+        if (f.x > W + m) f.x = -m;
+        else if (f.x < -m) f.x = W + m;
+        if (f.y > H + m) f.y = -m;
+        else if (f.y < -m) f.y = H + m;
+
+        ctx.save();
+        ctx.translate(f.x, f.y);
+        ctx.rotate(f.rot);
+        ctx.globalAlpha = f.alpha;
+        ctx.fillStyle = "hsl(" + f.hue + ",80%,75%)";
+        ctx.font = "bold " + f.size + "px Arial, sans-serif";
+        ctx.fillText(f.name, 0, 0);
+        ctx.restore();
       }
-    });
+      requestAnimationFrame(frame);
+    }
+
+    window.addEventListener("resize", () => { resize(); initNames(); });
+    resize();
+    initNames();
+    frame();
   </script>
 </body>
 
