@@ -24,22 +24,12 @@
       font-family: Arial, sans-serif;
     }
 
-    #fx {
-      position: fixed;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      z-index: 0;
-    }
-
     .app {
       position: relative;
-      z-index: 1;
       width: 100%;
       max-width: 380px;
       padding: 28px;
-      background: #1f2937ee;
+      background: #1f2937;
       border: 1px solid #374151;
       border-radius: 16px;
       box-shadow: 0 15px 40px #0003;
@@ -78,6 +68,17 @@
       outline: none;
     }
 
+    input[type=number] {
+      -moz-appearance: textfield;
+      appearance: textfield;
+    }
+
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
     input:focus {
       border-color: #60a5fa;
     }
@@ -103,7 +104,7 @@
       display: block;
     }
 
-    #clearBtn:hover {
+    #clearBtn:hover:not(:disabled) {
       background: #4b5563;
     }
 
@@ -161,15 +162,72 @@
       color: #34d399;
       font-size: 13px;
     }
+
+    /* Settings */
+    #settingsBtn {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      width: 36px;
+      height: 36px;
+      margin: 0;
+      padding: 0;
+      border-radius: 50%;
+      background: #374151;
+      color: #d1d5db;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    #settingsBtn:hover:not(:disabled) {
+      background: #4b5563;
+    }
+
+    #settingsPanel {
+      display: none;
+      margin-bottom: 22px;
+      padding: 16px;
+      border: 1px solid #374151;
+      border-radius: 10px;
+      background: #111827;
+    }
+
+    #settingsPanel.open {
+      display: block;
+    }
+
+    #settingsPanel input {
+      padding: 12px 14px;
+    }
+
+    #saveSpeedBtn {
+      margin-top: 12px;
+      padding: 11px;
+      font-size: 14px;
+    }
+
+    #settingsMsg {
+      min-height: 18px;
+      margin-top: 10px;
+      color: #f87171;
+      font-size: 13px;
+    }
   </style>
 </head>
 
 <body>
-  <canvas id="fx"></canvas>
-
   <main class="app">
+    <button id="settingsBtn" type="button" aria-label="Settings" aria-expanded="false">⚙</button>
+
     <h1>ETA Calculator</h1>
-    <p class="subtitle">Arrival time calculated automatically at 57 mph.</p>
+    <p class="subtitle">Arrival time calculated automatically at <span class="speedVal"></span> mph.</p>
+
+    <section id="settingsPanel">
+      <label for="speedInput">Speed (mph)</label>
+      <input id="speedInput" type="number" min="0" step="any">
+      <button id="saveSpeedBtn" type="button">Save</button>
+      <div id="settingsMsg"></div>
+    </section>
 
     <label for="miles">Distance (miles)</label>
     <div class="field">
@@ -177,7 +235,7 @@
       <button id="clearBtn" type="button" aria-label="Clear miles">✕</button>
     </div>
 
-    <div class="speed">Fixed speed: 57 mph</div>
+    <div class="speed">Fixed speed: <span class="speedVal"></span> mph</div>
 
     <section class="result" aria-live="polite">
       <div class="result-label">Estimated arrival</div>
@@ -190,13 +248,41 @@
   </main>
 
   <script>
+    const DEFAULT_SPEED = 57;
+    const STORAGE_KEY = "etaSpeedMph";
+
     const milesInput = document.getElementById("miles");
     const etaDisplay = document.getElementById("eta");
     const copyBtn = document.getElementById("copyBtn");
     const clearBtn = document.getElementById("clearBtn");
     const message = document.getElementById("message");
+    const settingsBtn = document.getElementById("settingsBtn");
+    const settingsPanel = document.getElementById("settingsPanel");
+    const speedInput = document.getElementById("speedInput");
+    const saveSpeedBtn = document.getElementById("saveSpeedBtn");
+    const settingsMsg = document.getElementById("settingsMsg");
 
     let etaText = "";
+    let speed = loadSpeed();
+
+    function loadSpeed() {
+      try {
+        const v = Number(localStorage.getItem(STORAGE_KEY));
+        if (Number.isFinite(v) && v > 0) return v;
+      } catch (e) { }
+      return DEFAULT_SPEED;
+    }
+
+    function saveSpeed(v) {
+      try {
+        if (v === DEFAULT_SPEED) localStorage.removeItem(STORAGE_KEY);
+        else localStorage.setItem(STORAGE_KEY, String(v));
+      } catch (e) { }
+    }
+
+    function renderSpeed() {
+      document.querySelectorAll(".speedVal").forEach(el => el.textContent = speed);
+    }
 
     function formatETA(date) {
       const pad = n => String(n).padStart(2, "0");
@@ -221,7 +307,7 @@
       const miles = Number(value);
       if (!Number.isFinite(miles) || miles < 0) return reset("Enter a valid distance.");
 
-      const arrival = new Date(Date.now() + (miles / 57) * 3600 * 1000);
+      const arrival = new Date(Date.now() + (miles / speed) * 3600 * 1000);
       etaText = formatETA(arrival);
       etaDisplay.textContent = etaText;
       copyBtn.disabled = false;
@@ -247,78 +333,44 @@
       }
     });
 
-    /* ---------- Floating names (always on) ---------- */
-    const NAMES = ["Connor", "Alex", "Ellis", "Zack", "Leo", "Alice", "Rob", "Michael", "Sam",
-      "Lia", "Oliver", "Kevin", "Nicholas", "Simon", "Sophia", "Ashley"];
-    const canvas = document.getElementById("fx");
-    const ctx = canvas.getContext("2d");
-    let W = 0, H = 0, floaters = [];
-
-    function resize() {
-      const dpr = window.devicePixelRatio || 1;
-      W = window.innerWidth;
-      H = window.innerHeight;
-      canvas.width = W * dpr;
-      canvas.height = H * dpr;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    }
-
-    function initNames() {
-      floaters = [];
-      for (let copy = 0; copy < 2; copy++) {
-        for (const name of NAMES) {
-          const speed = 0.25 + Math.random() * 0.7;
-          const angle = Math.random() * Math.PI * 2;
-          floaters.push({
-            name,
-            x: Math.random() * W,
-            y: Math.random() * H,
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed,
-            size: 14 + Math.random() * 18,
-            alpha: 0.18 + Math.random() * 0.25,
-            hue: Math.floor(Math.random() * 360),
-            rot: (Math.random() - 0.5) * 0.5,
-            rotV: (Math.random() - 0.5) * 0.002,
-            phase: Math.random() * Math.PI * 2
-          });
-        }
+    /* ---------- Settings ---------- */
+    settingsBtn.addEventListener("click", function () {
+      const open = settingsPanel.classList.toggle("open");
+      settingsBtn.setAttribute("aria-expanded", open);
+      settingsMsg.textContent = "";
+      if (open) {
+        speedInput.value = speed;
+        speedInput.focus();
       }
+    });
+
+    function applySpeed(v) {
+      speed = v;
+      saveSpeed(v);
+      renderSpeed();
+      calculateETA();
+      speedInput.value = v;
     }
 
-    function frame() {
-      ctx.clearRect(0, 0, W, H);
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-
-      for (const f of floaters) {
-        f.phase += 0.02;
-        f.x += f.vx;
-        f.y += f.vy + Math.sin(f.phase) * 0.3;
-        f.rot += f.rotV;
-
-        const m = 80;
-        if (f.x > W + m) f.x = -m;
-        else if (f.x < -m) f.x = W + m;
-        if (f.y > H + m) f.y = -m;
-        else if (f.y < -m) f.y = H + m;
-
-        ctx.save();
-        ctx.translate(f.x, f.y);
-        ctx.rotate(f.rot);
-        ctx.globalAlpha = f.alpha;
-        ctx.fillStyle = "hsl(" + f.hue + ",80%,75%)";
-        ctx.font = "bold " + f.size + "px Arial, sans-serif";
-        ctx.fillText(f.name, 0, 0);
-        ctx.restore();
+    saveSpeedBtn.addEventListener("click", function () {
+      const v = Number(speedInput.value);
+      if (speedInput.value.trim() === "" || !Number.isFinite(v) || v <= 0) {
+        settingsMsg.textContent = "Enter a speed greater than 0.";
+        return;
       }
-      requestAnimationFrame(frame);
-    }
+      settingsMsg.textContent = "";
+      applySpeed(v);
+      milesInput.value = "";
+      calculateETA();
+      settingsPanel.classList.remove("open");
+      settingsBtn.setAttribute("aria-expanded", "false");
+    });
 
-    window.addEventListener("resize", () => { resize(); initNames(); });
-    resize();
-    initNames();
-    frame();
+    speedInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") saveSpeedBtn.click();
+    });
+
+    renderSpeed();
   </script>
 </body>
 
