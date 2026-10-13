@@ -24,8 +24,30 @@
       font-family: Arial, sans-serif;
     }
 
+    /* Autumn leaves layer (disabled) */
+    #leaves {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+
+    /* Snow layer */
+    #snow {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+    }
+
     .app {
       position: relative;
+      z-index: 1;
       width: 100%;
       max-width: 380px;
       padding: 28px;
@@ -216,6 +238,11 @@
 </head>
 
 <body>
+  <!-- Autumn leaves (disabled) -->
+  <canvas id="leaves" aria-hidden="true"></canvas>
+
+  <!-- <canvas id="snow" aria-hidden="true"></canvas> -->
+
   <main class="app">
     <button id="settingsBtn" type="button" aria-label="Settings" aria-expanded="false">⚙</button>
 
@@ -371,6 +398,229 @@
     });
 
     renderSpeed();
+
+    (function () {
+      const canvas = document.getElementById("leaves");
+      const ctx = canvas.getContext("2d");
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+      const COLORS = ["#c2410c", "#ea580c", "#d97706", "#b45309", "#dc2626", "#ca8a04", "#92400e", "#9a3412"];
+
+      let W = 0, H = 0, leaves = [], last = 0, rafId = null;
+
+      function resize() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        W = window.innerWidth;
+        H = window.innerHeight;
+        canvas.width = W * dpr;
+        canvas.height = H * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        // Scale leaf count with screen width
+        const target = Math.round(Math.min(60, Math.max(18, W / 28)));
+        while (leaves.length < target) leaves.push(makeLeaf(true));
+        if (leaves.length > target) leaves.length = target;
+      }
+
+      function makeLeaf(randomY) {
+        const size = 7 + Math.random() * 13;
+        return {
+          x: Math.random() * W,
+          y: randomY ? Math.random() * H : -size * 2,
+          size: size,
+          vy: 28 + size * 2.2 + Math.random() * 20,   // px/sec, bigger = faster
+          swayAmp: 18 + Math.random() * 38,
+          swayFreq: 0.5 + Math.random() * 0.9,
+          phase: Math.random() * Math.PI * 2,
+          rot: Math.random() * Math.PI * 2,
+          vr: (Math.random() - 0.5) * 1.6,
+          flip: Math.random() * Math.PI * 2,
+          vflip: 1 + Math.random() * 2,
+          color: COLORS[(Math.random() * COLORS.length) | 0],
+          alpha: 0.5 + Math.random() * 0.4,
+          t: 0,
+          baseX: 0
+        };
+      }
+
+      function drawLeaf(l) {
+        const s = l.size;
+        ctx.save();
+        ctx.translate(l.x, l.y);
+        ctx.rotate(l.rot);
+        ctx.scale(Math.max(0.25, Math.abs(Math.cos(l.flip))), 1); // tumbling look
+        ctx.globalAlpha = l.alpha;
+
+        // blade
+        ctx.beginPath();
+        ctx.moveTo(0, -s);
+        ctx.bezierCurveTo(s * 0.95, -s * 0.45, s * 0.8, s * 0.55, 0, s);
+        ctx.bezierCurveTo(-s * 0.8, s * 0.55, -s * 0.95, -s * 0.45, 0, -s);
+        ctx.fillStyle = l.color;
+        ctx.fill();
+
+        // midrib + stem
+        ctx.beginPath();
+        ctx.moveTo(0, -s * 0.9);
+        ctx.lineTo(0, s * 1.25);
+        ctx.strokeStyle = "rgba(0,0,0,0.3)";
+        ctx.lineWidth = Math.max(0.8, s * 0.08);
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      function frame(now) {
+        const dt = Math.min(0.05, (now - last) / 1000 || 0);
+        last = now;
+        ctx.clearRect(0, 0, W, H);
+
+        for (let i = 0; i < leaves.length; i++) {
+          const l = leaves[i];
+          l.t += dt;
+          l.y += l.vy * dt;
+          l.x += Math.cos(l.t * l.swayFreq + l.phase) * l.swayAmp * dt;
+          l.rot += l.vr * dt;
+          l.flip += l.vflip * dt;
+
+          if (l.y - l.size * 2 > H || l.x < -60 || l.x > W + 60) {
+            leaves[i] = makeLeaf(false);
+            leaves[i].x = Math.random() * W;
+          }
+          drawLeaf(l);
+        }
+        rafId = requestAnimationFrame(frame);
+      }
+
+      function start() {
+        if (rafId || reduceMotion.matches) return;
+        last = performance.now();
+        rafId = requestAnimationFrame(frame);
+      }
+
+      function stop() {
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+
+      function drawStatic() {
+        ctx.clearRect(0, 0, W, H);
+        leaves.forEach(drawLeaf);
+      }
+
+      window.addEventListener("resize", function () {
+        resize();
+        if (reduceMotion.matches) drawStatic();
+      });
+
+      document.addEventListener("visibilitychange", function () {
+        document.hidden ? stop() : start();
+      });
+
+      reduceMotion.addEventListener("change", function () {
+        if (reduceMotion.matches) { stop(); drawStatic(); } else start();
+      });
+
+      resize();
+      if (reduceMotion.matches) drawStatic(); else start();
+    })();
+
+    /* ---------- Falling snow ---------- */
+    (function () {
+      const canvas = document.getElementById("snow");
+      const ctx = canvas.getContext("2d");
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+      let W = 0, H = 0, flakes = [], last = 0, time = 0, rafId = null;
+
+      function resize() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        W = window.innerWidth;
+        H = window.innerHeight;
+        canvas.width = W * dpr;
+        canvas.height = H * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        // Scale flake count with screen width
+        const target = Math.round(Math.min(140, Math.max(40, W / 12)));
+        while (flakes.length < target) flakes.push(makeFlake(true));
+        if (flakes.length > target) flakes.length = target;
+      }
+
+      function makeFlake(randomY) {
+        const r = 1 + Math.random() * 3.2;
+        return {
+          x: Math.random() * W,
+          y: randomY ? Math.random() * H : -r * 2,
+          r: r,
+          vy: 18 + r * 13 + Math.random() * 14,   // px/sec, bigger = faster (parallax)
+          swayAmp: 8 + Math.random() * 22,
+          swayFreq: 0.4 + Math.random() * 0.8,
+          phase: Math.random() * Math.PI * 2,
+          alpha: 0.4 + Math.random() * 0.5
+        };
+      }
+
+      function drawFlake(f) {
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255,255,255," + f.alpha + ")";
+        ctx.fill();
+      }
+
+      function frame(now) {
+        const dt = Math.min(0.05, (now - last) / 1000 || 0);
+        last = now;
+        time += dt;
+        ctx.clearRect(0, 0, W, H);
+
+        const wind = Math.sin(time * 0.2) * 12; // gentle drifting wind
+
+        for (let i = 0; i < flakes.length; i++) {
+          const f = flakes[i];
+          f.y += f.vy * dt;
+          f.x += (Math.cos(time * f.swayFreq + f.phase) * f.swayAmp + wind) * dt;
+
+          if (f.y - f.r > H || f.x < -20 || f.x > W + 20) {
+            flakes[i] = makeFlake(false);
+            flakes[i].x = Math.random() * W;
+          }
+          drawFlake(f);
+        }
+        rafId = requestAnimationFrame(frame);
+      }
+
+      function start() {
+        if (rafId || reduceMotion.matches) return;
+        last = performance.now();
+        rafId = requestAnimationFrame(frame);
+      }
+
+      function stop() {
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+
+      function drawStatic() {
+        ctx.clearRect(0, 0, W, H);
+        flakes.forEach(drawFlake);
+      }
+
+      window.addEventListener("resize", function () {
+        resize();
+        if (reduceMotion.matches) drawStatic();
+      });
+
+      document.addEventListener("visibilitychange", function () {
+        document.hidden ? stop() : start();
+      });
+
+      reduceMotion.addEventListener("change", function () {
+        if (reduceMotion.matches) { stop(); drawStatic(); } else start();
+      });
+
+      resize();
+      if (reduceMotion.matches) drawStatic(); else start();
+    })();
   </script>
 </body>
 
